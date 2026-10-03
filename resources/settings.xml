@@ -26,6 +26,11 @@
                     <default>en</default>
                     <constraints>
                         <options>
+                            <!-- Auto-detects he/en from each query's own text (AutoCompletion.py
+                                 detect_language), so Hebrew and English searches both get correct
+                                 suggestions with no manual switching. Any other language code here
+                                 behaves exactly as before - this option is purely additive. -->
+                            <option>auto</option>
                             <option>bg</option>
                             <option>cs</option>
                             <option>da</option>

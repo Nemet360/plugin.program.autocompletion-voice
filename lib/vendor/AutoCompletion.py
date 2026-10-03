@@ -37,20 +37,54 @@ def get_autocomplete_items(search_str, limit=10, provider=None):
     if xbmc.getCondVisibility("System.HasHiddenInput"):
         return []
 
+    language = resolve_language(search_str)
     setting = SETTING("autocomplete_provider").lower()
 
     if setting == "youtube":
-        provider = GoogleProvider(youtube=True, limit=limit)
+        provider = GoogleProvider(youtube=True, limit=limit, language=language)
     elif setting == "google":
-        provider = GoogleProvider(limit=limit)
+        provider = GoogleProvider(limit=limit, language=language)
     elif setting == "bing":
-        provider = BingProvider(limit=limit)
+        provider = BingProvider(limit=limit, language=language)
     elif setting == "tmdb":
-        provider = TmdbProvider(limit=limit)
+        provider = TmdbProvider(limit=limit, language=language)
     else:
-        provider = LocalDictProvider(limit=limit)
+        provider = LocalDictProvider(limit=limit, language=language)
     provider.limit = limit
     return provider.get_predictions(search_str)
+
+
+def detect_language(text):
+    """he/en from the query text alone: one Hebrew character (U+0590-U+05FF)
+    makes it Hebrew. That block is the same one `prep_search_str` below
+    already tests against (1488-1514 is its letter subset), reused here per
+    the request rather than invented fresh. Digits and Latin punctuation sit
+    outside the block, so neither affects the result; a mixed string with
+    even one Hebrew character returns "he" — the detector runs on the whole
+    query, not its first token, so "שובר bad" is Hebrew exactly like "שובר
+    שורות" is.
+    """
+    for char in text or "":
+        if "֐" <= char <= "׿":
+            return "he"
+    return "en"
+
+
+def resolve_language(search_str):
+    """The effective language for this one request.
+
+    `autocomplete_lang` stays a fixed value for everyone who has not touched
+    the new "auto" option — existing installs keep behaving exactly as
+    before. Picking "auto" is what turns detection on, and the result is
+    returned per call rather than written back into any setting or global:
+    the configured value needs to survive being read again next time
+    unchanged, and a fixed value must never be overwritten by whichever
+    language happened to be typed last.
+    """
+    configured = (SETTING("autocomplete_lang") or "").strip()
+    if configured.lower() == "auto":
+        return detect_language(search_str)
+    return configured
 
 
 def prep_search_str(text):
@@ -66,7 +100,11 @@ class BaseProvider(ABC):
 
     def __init__(self, *args, **kwargs):
         self.limit = kwargs.get("limit", 10)
-        self.language = SETTING("autocomplete_lang")
+        # `language` is passed per call by get_autocomplete_items (the already
+        # resolved value, auto-detected or fixed). The SETTING() fallback is
+        # for the provider classes' own stated contract of being constructible
+        # on their own; nothing in this codebase instantiates one without it.
+        self.language = kwargs.get("language") or SETTING("autocomplete_lang")
 
     @abstractmethod
     def build_url(self, query):
